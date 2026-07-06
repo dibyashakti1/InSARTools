@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+
+# Build
+build/
+dist/
+*.egg-info/
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+
+# Conda
+.conda/
+
+# IDE
+.vscode/
+.idea/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Generated images
+*.png
+*.jpg
+*.jpeg
+*.pdf
+
+# NumPy
+*.npy
+
+# GDAL / ISCE
+*.aux.xml
+*.vrt
+
+# Temporary
+tmp/
+temp/
