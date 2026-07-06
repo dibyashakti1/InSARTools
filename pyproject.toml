@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "insartools"
+version = "0.1.0"
+description = "Python toolkit for InSAR coseismic and tectonic deformation analysis"
+authors = [
+    { name = "Dibyashakti Panda", email = "your_email@example.com" }
+]
+readme = "README.md"
+requires-python = ">=3.10"
+
+dependencies = [
+    "numpy",
+    "matplotlib",
+    "scipy",
+    "rasterio"
+]
