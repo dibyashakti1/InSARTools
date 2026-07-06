@@ -162,3 +162,27 @@ def save_numpy(
     """
 
     np.save(filename, array)
+
+
+    def open_dataset(filename: str):
+    """
+    Open a GDAL dataset.
+
+    Parameters
+    ----------
+    filename : str
+        Input raster.
+
+    Returns
+    -------
+    gdal.Dataset
+    """
+
+    ds = gdal.Open(filename)
+
+    if ds is None:
+        raise InvalidRasterError(
+            f"Cannot open raster: {filename}"
+        )
+
+    return ds
