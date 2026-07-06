@@ -47,3 +47,12 @@ Thumbs.db
 # Temporary
 tmp/
 temp/
+
+
+# Generated outputs
+*.rdr
+*.hdr
+*.png
+*.log
+.pytest_cache/
+__pycache__/

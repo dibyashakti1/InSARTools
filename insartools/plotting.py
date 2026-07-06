@@ -52,10 +52,16 @@ def quicklook(
 
     fig, ax = plt.subplots(figsize=(10, 6))
 
+    # Robust display range (ignore extreme outliers)
+    vmin = np.nanpercentile(data, 2)
+    vmax = np.nanpercentile(data, 98)
+
     im = ax.imshow(
         data,
         cmap=cmap,
-        origin="upper"
+        origin="upper",
+        vmin=vmin,
+        vmax=vmax
     )
 
     ax.set_xticks([])

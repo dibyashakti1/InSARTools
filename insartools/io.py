@@ -111,6 +111,30 @@ def write_envi(
 
     ds = None
 
+def save_raster(
+    filename: str,
+    array: np.ndarray,
+) -> None:
+    """
+    Save raster based on file extension.
+
+    Currently supports:
+        *.rdr
+        *.img
+        *.bin
+
+    GeoTIFF support will be added in v0.2.
+    """
+
+    ext = os.path.splitext(filename)[1].lower()
+
+    if ext in [".rdr", ".img", ".bin", ""]:
+        write_envi(filename, array)
+    else:
+        raise InvalidRasterError(
+            f"Unsupported output format: {ext}"
+        )
+
 
 def copy_header(
     input_file: str,
