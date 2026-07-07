@@ -1,34 +1,55 @@
 """
-insartools.plot
-===============
+===============================================================================
 
-Core plotting utilities for InSARTools.
+InSARTools
 
-This module provides a generic scientific raster plotting engine used by
-all visualization modules (wrapped, unwrapped, amplitude, phase).
+plot.py
 
-The functions in this module are intentionally data-agnostic and operate
-on any two-dimensional raster.
+Low-level plotting engine used throughout InSARTools.
+
+This module provides:
+
+    • Figure creation
+    • Image plotting
+    • Geographic axes
+    • Colorbars
+    • Scale bars
+    • Consistent publication-quality defaults
+
+Higher-level plotting routines should be implemented in wrapped.py,
+unwrapped.py and amplitude.py.
 
 Author
 ------
-InSARTools Development Team
+Dibyashakti Panda
+
+License
+-------
+MIT
+
+===============================================================================
 """
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+import logging
+
 import matplotlib.pyplot as plt
 import numpy as np
+
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.image import AxesImage
 
 logger = logging.getLogger(__name__)
+
+###############################################################################
+# Public API
+###############################################################################
 
 __all__ = [
     "PlotConfig",
@@ -37,131 +58,92 @@ __all__ = [
     "show",
 ]
 
-
 ###############################################################################
-# Configuration
+# Type aliases
 ###############################################################################
 
 Interpolation = Literal[
     "nearest",
     "bilinear",
     "bicubic",
-    "none",
 ]
 
+Origin = Literal[
+    "upper",
+    "lower",
+]
+
+Aspect = Literal[
+    "equal",
+    "auto",
+]
+
+###############################################################################
+# Plot configuration
+###############################################################################
+
 
 @dataclass(slots=True)
 class PlotConfig:
     """
-    Configuration options for raster plotting.
-
-    Parameters
-    ----------
-    cmap : str
-        Matplotlib colormap.
-
-    figsize : tuple
-        Figure size in inches.
-
-    dpi : int
-        Figure resolution.
-
-    interpolation : str
-        Image interpolation method.
-
-    colorbar : bool
-        Draw a colorbar.
-
-    colorbar_label : str
-        Colorbar label.
-
-    title : str
-        Figure title.
-
-    xlabel : str
-        X-axis label.
-
-    ylabel : str
-        Y-axis label.
-
-    aspect : str
-        Image aspect ratio.
-
-    origin : str
-
-
+    Configuration for image plotting.
     """
-@dataclass(slots=True)
-class PlotConfig:
 
-    cmap: str = "viridis"
+    # Figure
 
-    figsize: tuple[float, float] = (8,8)
+    figsize: tuple[float, float] = (8.0, 8.0)
 
     dpi: int = 300
 
-    interpolation: Interpolation = "nearest"
-
-    show_colorbar: bool = True
-
-    colorbar_label: str = ""
-
     title: str = ""
 
-    xlabel: str = "Longitude"
+    # Image
 
-    ylabel: str = "Latitude"
+    cmap: str = "viridis"
 
-    aspect: str = "equal"
+    interpolation: Interpolation = "nearest"
 
-    origin: str = "upper"
+    origin: Origin = "upper"
+
+    aspect: Aspect = "equal"
 
     vmin: float | None = None
 
     vmax: float | None = None
 
+    # Labels
+
+    xlabel: str = "Longitude"
+
+    ylabel: str = "Latitude"
+
     fontsize: int = 12
 
     ticksize: int = 10
 
+    # Colorbar
+
+    show_colorbar: bool = True
+
+    colorbar_label: str = ""
+
+    # NaN handling
+
     transparent_nan: bool = True
 
     nan_color: str = "white"
+
+    # Grid
+
+    show_grid: bool = False
+
+    # Scale bar
 
     show_scalebar: bool = False
 
     scalebar_length: float | None = None
 
     scalebar_label: str | None = None
-
-    show_grid: bool = False
-
-    cmap: str = "viridis"
-
-    figsize: tuple[float, float] = (8.0, 8.0)
-
-    dpi: int = 300
-
-    interpolation: Interpolation = "nearest"
-
-    show_colorbar: bool = True
-
-    colorbar_label: str = ""
-
-    title: str = ""
-
-    xlabel: str = "Longitude"
-
-    ylabel: str = "Latitude"
-
-    aspect: str = "equal"
-
-    origin: str = "upper"
-
-    vmin: float | None = None
-
-    vmax: float | None = None
-
 
 ###############################################################################
 # Validation
@@ -170,9 +152,8 @@ class PlotConfig:
 
 def _validate(
     data: np.ndarray,
-    lat: np.ndarray | None,
-    lon: np.ndarray | None,
-    config: PlotConfig,
+    latitude: np.ndarray | None,
+    longitude: np.ndarray | None,
 ) -> None:
     """
     Validate plotting inputs.
@@ -180,41 +161,35 @@ def _validate(
 
     if data.ndim != 2:
         raise ValueError(
-            "Input raster must be two-dimensional."
+            "Input data must be a 2-D array."
         )
 
-    if lat is not None:
+    if latitude is not None:
 
-        if lat.ndim != 1:
+        if latitude.ndim != 1:
             raise ValueError(
-                "Latitude must be a one-dimensional vector."
+                "Latitude must be a 1-D vector."
             )
 
-        if lat.size != data.shape[0]:
+        if latitude.size != data.shape[0]:
             raise ValueError(
-                "Latitude length must equal raster rows."
+                "Latitude length does not match image rows."
             )
 
-    if lon is not None:
+    if longitude is not None:
 
-        if lon.ndim != 1:
+        if longitude.ndim != 1:
             raise ValueError(
-                "Longitude must be a one-dimensional vector."
+                "Longitude must be a 1-D vector."
             )
 
-        if lon.size != data.shape[1]:
+        if longitude.size != data.shape[1]:
             raise ValueError(
-                "Longitude length must equal raster columns."
+                "Longitude length does not match image columns."
             )
 
-    if config.dpi <= 0:
-        raise ValueError(
-            "DPI must be positive."
-        )
-
-
-###############################################################################
-# Helper functions
+            ###############################################################################
+# Internal helper functions
 ###############################################################################
 
 
@@ -228,32 +203,27 @@ def _create_axes(
     fig, ax = plt.subplots(
         figsize=config.figsize,
         dpi=config.dpi,
-        constrained_layout=True,
     )
 
     return fig, ax
 
 
 def _get_extent(
-    lat: np.ndarray | None,
-    lon: np.ndarray | None,
+    latitude: np.ndarray | None,
+    longitude: np.ndarray | None,
 ) -> tuple[float, float, float, float] | None:
     """
-    Build matplotlib extent from coordinate vectors.
-
-    Returns
-    -------
-    tuple or None
+    Return image extent for geographic coordinates.
     """
 
-    if lat is None or lon is None:
+    if latitude is None or longitude is None:
         return None
 
     return (
-        float(lon.min()),
-        float(lon.max()),
-        float(lat.min()),
-        float(lat.max()),
+        float(longitude.min()),
+        float(longitude.max()),
+        float(latitude.min()),
+        float(latitude.max()),
     )
 
 
@@ -262,83 +232,164 @@ def _apply_axes(
     config: PlotConfig,
 ) -> None:
     """
-    Apply axes formatting.
+    Apply common axis formatting.
     """
 
-    ax.set_title(config.title)
-
-    ax.set_xlabel(config.xlabel)
-
-    ax.set_ylabel(config.ylabel)
-
-    ax.set_aspect(config.aspect)
-
-    ax.tick_params(
-        direction="out",
-        length=4,
-        width=0.8,
+    ax.set_title(
+        config.title,
+        fontsize=config.fontsize,
     )
 
-    ax.grid(config.show_grid)
+    ax.set_xlabel(
+        config.xlabel,
+        fontsize=config.fontsize,
+    )
 
-    ax.title.set_fontsize(config.fontsize)
-
-    ax.xaxis.label.set_fontsize(config.fontsize)
-
-    ax.yaxis.label.set_fontsize(config.fontsize)
+    ax.set_ylabel(
+        config.ylabel,
+        fontsize=config.fontsize,
+    )
 
     ax.tick_params(
-    labelsize=config.ticksize,
+        labelsize=config.ticksize,
     )
+
+    if config.show_grid:
+
+        ax.grid(
+
+            True,
+
+            linestyle=":",
+
+            linewidth=0.5,
+
+            alpha=0.5,
+        )
 
 def _add_colorbar(
     fig: Figure,
     ax: Axes,
     image: AxesImage,
     config: PlotConfig,
-) -> None:
+):
     """
-    Add a colorbar.
+    Add a colorbar if requested.
     """
 
-    if not config.colorbar:
-        return
+    if not config.show_colorbar:
+        return None
 
-    cbar = fig.colorbar(
+    cb = fig.colorbar(
         image,
         ax=ax,
         fraction=0.046,
         pad=0.04,
     )
 
-    cbar.set_label(
-        config.colorbar_label,
+    if config.colorbar_label:
+        cb.set_label(
+            config.colorbar_label,
+            fontsize=config.fontsize,
+        )
+
+    cb.ax.tick_params(
+        labelsize=config.ticksize,
+    )
+
+    return cb
+
+
+def _add_scalebar(
+    ax: Axes,
+    latitude: np.ndarray | None,
+    longitude: np.ndarray | None,
+    config: PlotConfig,
+) -> None:
+    """
+    Draw a simple geographic scale bar.
+
+    Assumes geographic coordinates in degrees.
+    """
+
+    if not config.show_scalebar:
+        return
+
+    if latitude is None or longitude is None:
+        return
+
+    length_km = (
+        10.0
+        if config.scalebar_length is None
+        else config.scalebar_length
+    )
+
+    mean_lat = float(
+        np.mean(latitude)
+    )
+
+    deg = length_km / (
+        111.32
+        * np.cos(
+            np.deg2rad(mean_lat)
+        )
+    )
+
+    xmin = float(longitude.min())
+    xmax = float(longitude.max())
+
+    ymin = float(latitude.min())
+    ymax = float(latitude.max())
+
+    x0 = xmin + 0.05 * (xmax - xmin)
+    y0 = ymin + 0.05 * (ymax - ymin)
+
+    ax.plot(
+        [x0, x0 + deg],
+        [y0, y0],
+        color="black",
+        linewidth=3,
+    )
+
+    label = (
+        config.scalebar_label
+        if config.scalebar_label is not None
+        else f"{length_km:g} km"
+    )
+
+    ax.text(
+        x0 + deg / 2,
+        y0,
+        label,
+        ha="center",
+        va="bottom",
+        fontsize=config.ticksize,
     )
 
     ###############################################################################
-# Public plotting API
+# Public plotting functions
 ###############################################################################
 
 
 def imshow(
     data: np.ndarray,
     *,
-    lat: np.ndarray | None = None,
-    lon: np.ndarray | None = None,
+    latitude: np.ndarray | None = None,
+    longitude: np.ndarray | None = None,
     config: PlotConfig | None = None,
 ) -> tuple[Figure, Axes, AxesImage]:
     """
-    Display a two-dimensional raster.
+    Display a 2-D raster.
 
     Parameters
     ----------
     data : ndarray
-        Input raster.
+        Image to display.
 
-    lat : ndarray, optional
+    latitude : ndarray, optional
         Latitude vector.
 
-    lon : ndarray, optional
+    longitude : ndarray, optional
         Longitude vector.
 
     config : PlotConfig, optional
@@ -353,50 +404,59 @@ def imshow(
     image : AxesImage
     """
 
-    logger.info("Creating raster plot.")
-
     if config is None:
         config = PlotConfig()
 
+    data = np.asarray(data)
+
     _validate(
         data=data,
-        lat=lat,
-        lon=lon,
-        config=config,
+        latitude=latitude,
+        longitude=longitude,
     )
 
     fig, ax = _create_axes(config)
 
     extent = _get_extent(
-        lat=lat,
-        lon=lon,
+        latitude=latitude,
+        longitude=longitude,
     )
 
-plot_data = np.array(
-    data,
-    copy=True,
-)
+    # ------------------------------------------------------------------
+    # Prepare image
+    # ------------------------------------------------------------------
 
-cmap = plt.get_cmap(config.cmap).copy()
-
-if config.transparent_nan:
-    cmap.set_bad(
-        color=config.nan_color,
-        alpha=0.0,
+    plot_data = np.array(
+        data,
+        copy=True,
     )
 
-plot_data = np.ma.masked_invalid(plot_data)
+    cmap = plt.get_cmap(
+        config.cmap,
+    ).copy()
 
-image = ax.imshow(
-    plot_data,
-    cmap=cmap,
-    interpolation=config.interpolation,
-    origin=config.origin,
-    aspect=config.aspect,
-    extent=extent,
-    vmin=config.vmin,
-    vmax=config.vmax,
-)
+    if config.transparent_nan:
+
+        cmap.set_bad(
+            color=config.nan_color,
+            alpha=0.0,
+        )
+
+    plot_data = np.ma.masked_invalid(
+        plot_data,
+    )
+
+    image = ax.imshow(
+        plot_data,
+        cmap=cmap,
+        interpolation=config.interpolation,
+        origin=config.origin,
+        aspect=config.aspect,
+        extent=extent,
+        vmin=config.vmin,
+        vmax=config.vmax,
+    )
+
     _apply_axes(
         ax=ax,
         config=config,
@@ -407,75 +467,16 @@ image = ax.imshow(
         ax=ax,
         image=image,
         config=config,
-        def _add_scalebar(
-    ax: Axes,
-    latitude: np.ndarray | None,
-    longitude: np.ndarray | None,
-    config: PlotConfig,
-) -> None:
-    """
-    Add a simple scale bar.
-
-    Currently supports geographic coordinates.
-    """
-
-    if not config.scalebar:
-        return
-
-    if latitude is None or longitude is None:
-        return
-
-    if config.scalebar_length is None:
-        length_km = 10.0
-    else:
-        length_km = config.scalebar_length
-
-    mean_lat = float(np.mean(latitude))
-
-    deg = length_km / (
-        111.32 * np.cos(
-            np.deg2rad(mean_lat)
-        )
     )
 
-    x0 = longitude.min() + 0.05 * (
-        longitude.max() - longitude.min()
+    _add_scalebar(
+        ax=ax,
+        latitude=latitude,
+        longitude=longitude,
+        config=config,
     )
 
-    y0 = latitude.min() + 0.05 * (
-        latitude.max() - latitude.min()
-    )
-
-    ax.plot(
-        [x0, x0 + deg],
-        [y0, y0],
-        color="black",
-        linewidth=3,
-    )
-
-    label = (
-        config.scalebar_label
-        or
-        f"{length_km:g} km"
-    )
-
-    ax.text(
-        x0 + deg / 2,
-        y0,
-        label,
-        ha="center",
-        va="bottom",
-        fontsize=config.ticksize,
-    )
-    )
-
-    logger.info("Plot created successfully.")
-
-    return (
-        fig,
-        ax,
-        image,
-    )
+    return fig, ax, image
 
 
 ###############################################################################
@@ -484,61 +485,38 @@ image = ax.imshow(
 
 
 def save(
-    fig: Figure,
+    figure: Figure,
     filename: str | Path,
     *,
     dpi: int = 300,
     transparent: bool = False,
-    bbox_inches: str = "tight",
 ) -> Path:
     """
     Save a matplotlib figure.
-
-    Parameters
-    ----------
-    fig : Figure
-        Figure object.
-
-    filename : str or Path
-        Output filename.
-
-    dpi : int, default=300
-        Output resolution.
-
-    transparent : bool, default=False
-        Save with transparent background.
-
-    bbox_inches : str
-        Bounding box mode.
-
-    Returns
-    -------
-    Path
-        Saved filename.
     """
 
     filename = Path(filename)
 
-    logger.info(
-        "Saving figure to %s",
-        filename,
-    )
-
-    fig.savefig(
+    figure.savefig(
         filename,
         dpi=dpi,
+        bbox_inches="tight",
         transparent=transparent,
-        bbox_inches=bbox_inches,
     )
 
-    logger.info("Figure saved.")
+    logger.info(
+        "Saved figure to %s",
+        filename,
+    )
 
     return filename
 
 
-def show() -> None:
+def show(
+    figure: Figure | None = None,
+) -> None:
     """
-    Display all pending figures.
+    Display a figure.
     """
 
     plt.show()

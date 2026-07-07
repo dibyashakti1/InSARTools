@@ -4,7 +4,7 @@ InSARTools
 
 plotting.py
 
-Plotting utilities for InSAR products.
+High-level plotting utilities built on top of plot.py.
 
 Author : Dibyashakti Panda
 License: MIT
@@ -18,6 +18,8 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
+from .plot import PlotConfig, imshow, save
+
 
 def quicklook(
     array: np.ndarray,
@@ -28,69 +30,42 @@ def quicklook(
     dpi: int = 300,
 ) -> None:
     """
-    Save a quicklook PNG of a raster.
-
-    Parameters
-    ----------
-    array : ndarray
-        Input raster.
-    output : str
-        Output PNG filename.
-    cmap : str
-        Matplotlib colormap.
-    title : str, optional
-        Figure title.
-    unit : str
-        Colorbar label.
-    dpi : int
-        Output resolution.
+    Save a publication-quality quicklook PNG.
     """
 
-    data = np.array(array, dtype=float)
+    data = np.asarray(array, dtype=float)
 
     data[~np.isfinite(data)] = np.nan
 
-from .plot import PlotConfig
-from .plot import imshow
+    try:
+        vmin = np.nanpercentile(data, 2)
+        vmax = np.nanpercentile(data, 98)
+    except Exception:
+        vmin = None
+        vmax = None
 
-    # Robust display range (ignore extreme outliers)
-    vmin = np.nanpercentile(data, 2)
-    vmax = np.nanpercentile(data, 98)
-
-    im = ax.imshow(
-        data,
+    config = PlotConfig(
         cmap=cmap,
-        origin="upper",
+        title=title or "",
+        colorbar_label=unit,
         vmin=vmin,
-        vmax=vmax
+        vmax=vmax,
     )
 
-    ax.set_xticks([])
-    ax.set_yticks([])
-
-    if title:
-        ax.set_title(title, fontsize=12)
-
-    cbar = fig.colorbar(
-        im,
-        ax=ax,
-        shrink=0.75,
-        pad=0.02
+    fig, ax, image = imshow(
+        data,
+        config=config,
     )
-
-    cbar.set_label(unit)
-
-    fig.tight_layout()
 
     Path(output).parent.mkdir(
         parents=True,
-        exist_ok=True
+        exist_ok=True,
     )
 
-    fig.savefig(
+    save(
+        fig,
         output,
         dpi=dpi,
-        bbox_inches="tight"
     )
 
     plt.close(fig)
@@ -105,16 +80,18 @@ def histogram(
     dpi: int = 300,
 ) -> None:
     """
-    Save histogram of raster values.
+    Save a histogram of raster values.
     """
 
-    values = array[np.isfinite(array)]
+    values = np.asarray(array)
+
+    values = values[np.isfinite(values)]
 
     fig, ax = plt.subplots(figsize=(8, 5))
 
     ax.hist(
         values,
-        bins=bins
+        bins=bins,
     )
 
     ax.set_title(title)
@@ -124,49 +101,50 @@ def histogram(
     ax.set_ylabel("Frequency")
 
     ax.grid(
-        alpha=0.3
+        True,
+        alpha=0.3,
     )
 
     fig.tight_layout()
 
     Path(output).parent.mkdir(
         parents=True,
-        exist_ok=True
+        exist_ok=True,
     )
 
     fig.savefig(
         output,
         dpi=dpi,
-        bbox_inches="tight"
+        bbox_inches="tight",
     )
 
     plt.close(fig)
 
 
-def print_statistics(array: np.ndarray) -> dict:
+def print_statistics(
+    array: np.ndarray,
+) -> dict:
     """
     Compute raster statistics.
-
-    Returns
-    -------
-    dict
     """
 
-    stats = {
+    array = np.asarray(array)
 
-        "min": float(np.nanmin(array)),
-        "max": float(np.nanmax(array)),
-        "mean": float(np.nanmean(array)),
-        "std": float(np.nanstd(array))
+    array = array[np.isfinite(array)]
 
+    return {
+        "min": float(np.min(array)),
+        "max": float(np.max(array)),
+        "mean": float(np.mean(array)),
+        "std": float(np.std(array)),
     }
 
-    return stats
 
-
-def print_statistics_console(stats: dict) -> None:
+def print_statistics_console(
+    stats: dict,
+) -> None:
     """
-    Pretty-print statistics.
+    Print statistics to the console.
     """
 
     print("\nOutput Statistics")

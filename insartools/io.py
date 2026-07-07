@@ -152,19 +152,20 @@ def copy_header(
 
         shutil.copy(hdr, out_hdr)
 
-
 def save_numpy(
     filename: str,
     array: np.ndarray,
 ) -> None:
     """
-    Save NumPy array.
+    Save a NumPy array to a .npy file.
     """
 
     np.save(filename, array)
 
 
-    def open_dataset(filename: str):
+def open_dataset(
+    filename: str,
+):
     """
     Open a GDAL dataset.
 
@@ -176,6 +177,7 @@ def save_numpy(
     Returns
     -------
     gdal.Dataset
+        Open GDAL dataset.
     """
 
     ds = gdal.Open(filename)
