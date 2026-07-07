@@ -50,7 +50,8 @@ def quicklook(
 
     data[~np.isfinite(data)] = np.nan
 
-    fig, ax = plt.subplots(figsize=(10, 6))
+from .plot import PlotConfig
+from .plot import imshow
 
     # Robust display range (ignore extreme outliers)
     vmin = np.nanpercentile(data, 2)
