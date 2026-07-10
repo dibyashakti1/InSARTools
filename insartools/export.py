@@ -48,12 +48,14 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "save",
     "save_figure",
     "save_mat",
     "save_npz",
     "save_geotiff",
+    "save_kml",
+    "save_kmz",
 ]
-
 
 ###############################################################################
 # Helpers
@@ -99,6 +101,11 @@ def _validate_coordinates(
         raise ValueError(
             "Longitude size does not match raster."
         )
+
+###############################################################################
+# Master export function
+###############################################################################
+
 
 
 ###############################################################################

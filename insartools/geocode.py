@@ -38,6 +38,10 @@ from typing import Literal
 
 import numpy as np
 
+from osgeo import gdal
+
+gdal.UseExceptions()
+
 try:
     import rasterio
     from rasterio.transform import from_origin
@@ -61,6 +65,8 @@ InterpolationMethod = Literal[
 
 
 __all__ = [
+    "geocode_gdal",
+    "load_geometry",
     "geocode_array",
     "geocode_raster",
 ]
@@ -509,3 +515,396 @@ def _write_geotiff(
 
     return output_file
 
+###############################################################################
+# Geometry loader
+###############################################################################
+
+from .io import read_raster
+
+
+def load_geometry(
+    geometry_dir: str | Path,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Load ISCE2 latitude and longitude lookup tables.
+
+    Parameters
+    ----------
+    geometry_dir : str or Path
+        Directory containing lat.rdr and lon.rdr.
+
+    Returns
+    -------
+    latitude : ndarray
+    longitude : ndarray
+    """
+
+    geometry_dir = Path(geometry_dir)
+
+    lat_file = geometry_dir / "lat.rdr"
+    lon_file = geometry_dir / "lon.rdr"
+
+    if not lat_file.exists():
+        raise FileNotFoundError(lat_file)
+
+    if not lon_file.exists():
+        raise FileNotFoundError(lon_file)
+
+    logger.info("Reading geometry lookup tables.")
+
+    latitude = read_raster(str(lat_file))
+    longitude = read_raster(str(lon_file))
+
+    # ISCE commonly uses 0 outside the valid footprint.
+    latitude = latitude.astype(np.float64)
+    longitude = longitude.astype(np.float64)
+
+    latitude[latitude == 0] = np.nan
+    longitude[longitude == 0] = np.nan
+
+    return latitude, longitude
+
+
+def geocode_gdal(
+    input_file: str | Path,
+    geometry_dir: str | Path,
+    output_file: str | Path,
+    *,
+    target_epsg: str = "EPSG:4326",
+    resampling: str = "near",
+    overwrite: bool = True,
+) -> Path:
+    """
+    Geocode a radar-coordinate raster using GDAL geolocation arrays.
+
+    Parameters
+    ----------
+    input_file : str or Path
+        Radar-coordinate raster.
+
+    geometry_dir : str or Path
+        Directory containing lat.rdr and lon.rdr.
+
+    output_file : str or Path
+        Output GeoTIFF.
+
+    target_epsg : str
+        Output CRS.
+
+    resampling : str
+        GDAL resampling method.
+
+    overwrite : bool
+        Overwrite existing output.
+
+    Returns
+    -------
+    Path
+        Output GeoTIFF.
+    """
+
+    input_file = Path(input_file)
+    output_file = Path(output_file)
+
+    logger.info("Starting GDAL geocoding.")
+    logger.info("Input : %s", input_file)
+    logger.info("Output: %s", output_file)
+
+    if output_file.exists():
+
+        if overwrite:
+            output_file.unlink()
+
+        else:
+            raise FileExistsError(output_file)
+
+    vrt_file = _create_geoloc_vrt(
+        input_file,
+        geometry_dir,
+    )
+
+    logger.info("Running GDAL Warp...")
+
+    warp_options = gdal.WarpOptions(
+        format="GTiff",
+        dstSRS=target_epsg,
+        geoloc=True,
+        resampleAlg=resampling,
+        creationOptions=[
+            "COMPRESS=LZW",
+            "TILED=YES",
+        ],
+    )
+
+    result = gdal.Warp(
+        str(output_file),
+        str(vrt_file),
+        options=warp_options,
+    )
+
+    if result is None:
+        raise RuntimeError(
+            "GDAL Warp failed."
+        )
+
+    result = None
+
+    logger.info("Geocoding complete.")
+
+    return output_file
+
+
+def _create_geoloc_vrt(
+    input_file: str | Path,
+    geometry_dir: str | Path,
+) -> Path:
+    """
+    Create a VRT with ISCE2 geolocation arrays attached.
+
+    Parameters
+    ----------
+    input_file : str or Path
+        Radar-coordinate raster.
+
+    geometry_dir : str or Path
+        Directory containing lat.rdr and lon.rdr.
+
+    Returns
+    -------
+    Path
+        Path to the generated VRT.
+    """
+
+    input_file = Path(input_file)
+    geometry_dir = Path(geometry_dir)
+
+    vrt_file = input_file.with_suffix(".vrt")
+
+    ds = gdal.Open(str(input_file))
+
+    if ds is None:
+        raise RuntimeError(f"Cannot open {input_file}")
+
+    driver = gdal.GetDriverByName("VRT")
+
+    vrt = driver.CreateCopy(
+        str(vrt_file),
+        ds,
+        0,
+    )
+
+    vrt.SetMetadata(
+        {
+            "X_DATASET": str(geometry_dir / "lon.rdr"),
+            "X_BAND": "1",
+            "Y_DATASET": str(geometry_dir / "lat.rdr"),
+            "Y_BAND": "1",
+            "PIXEL_OFFSET": "0",
+            "LINE_OFFSET": "0",
+            "PIXEL_STEP": "1",
+            "LINE_STEP": "1",
+        },
+        "GEOLOCATION",
+    )
+
+    vrt.FlushCache()
+
+    vrt = None
+    ds = None
+
+    logger.info("Created VRT: %s", vrt_file)
+
+    return vrt_file
+
+
+###############################################################################
+# Public API
+###############################################################################
+
+def geocode_array(
+    data: np.ndarray,
+    latitude: np.ndarray,
+    longitude: np.ndarray,
+    *,
+    resolution: float = 30.0,
+    resolution_unit: Literal["meters", "degrees"] = "meters",
+    method: InterpolationMethod = "linear",
+    mask: np.ndarray | None = None,
+    fill_value: float = np.nan,
+    output_file: str | Path | None = None,
+    overwrite: bool = False,
+):
+    """
+    Geocode an in-memory radar-coordinate array.
+
+    Parameters
+    ----------
+    data : ndarray
+        Radar-coordinate raster.
+
+    latitude : ndarray
+        Latitude lookup table.
+
+    longitude : ndarray
+        Longitude lookup table.
+
+    resolution : float
+        Output grid spacing.
+
+    resolution_unit : {"meters", "degrees"}
+
+    method : {"nearest", "linear", "cubic"}
+
+    output_file : str or Path, optional
+        If supplied, write a GeoTIFF.
+
+    Returns
+    -------
+    geo_data : ndarray
+
+    geo_lat : ndarray
+
+    geo_lon : ndarray
+    """
+
+    logger.info("Starting geocoding.")
+
+    _validate_inputs(
+        data=data,
+        latitude=latitude,
+        longitude=longitude,
+        resolution=resolution,
+        resolution_unit=resolution_unit,
+        method=method,
+        mask=mask,
+    )
+
+    geo_lat, geo_lon, mesh_lon, mesh_lat = _build_output_grid(
+        latitude,
+        longitude,
+        resolution,
+        resolution_unit,
+    )
+
+    points, values = _prepare_points(
+        data,
+        latitude,
+        longitude,
+        mask,
+    )
+
+    geo_data = _interpolate(
+        points,
+        values,
+        mesh_lon,
+        mesh_lat,
+        method=method,
+        fill_value=fill_value,
+    )
+
+    if output_file is not None:
+
+        _write_geotiff(
+            output_file=output_file,
+            data=geo_data,
+            latitude=geo_lat,
+            longitude=geo_lon,
+            overwrite=overwrite,
+        )
+
+    logger.info("Geocoding complete.")
+
+    return geo_data, geo_lat, geo_lon
+
+###############################################################################
+# Plot helper
+###############################################################################
+
+import tempfile
+
+from .io import (
+    read_raster,
+    save_raster,
+)
+
+
+
+###############################################################################
+# Geocode for visualization
+###############################################################################
+
+def geocode_for_plot(
+    data: np.ndarray,
+    geometry_dir: str | Path,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Geocode an in-memory raster for visualization.
+
+    Parameters
+    ----------
+    data : ndarray
+        Radar-coordinate raster.
+
+    geometry_dir : str or Path
+        Directory containing lat.rdr and lon.rdr.
+
+    Returns
+    -------
+    geo_data : ndarray
+        Geocoded raster.
+
+    latitude : ndarray
+        Latitude vector.
+
+    longitude : ndarray
+        Longitude vector.
+    """
+
+    from tempfile import TemporaryDirectory
+
+    from osgeo import gdal
+
+    from .io import save_raster
+
+    with TemporaryDirectory() as tmpdir:
+
+        tmpdir = Path(tmpdir)
+
+        radar_file = tmpdir / "temp.rdr"
+        geo_file = tmpdir / "temp_geo.tif"
+
+        save_raster(
+            str(radar_file),
+            data,
+        )
+
+        geocode_gdal(
+            input_file=radar_file,
+            geometry_dir=geometry_dir,
+            output_file=geo_file,
+        )
+
+        ds = gdal.Open(str(geo_file))
+
+        if ds is None:
+            raise RuntimeError(
+                f"Unable to open geocoded raster: {geo_file}"
+            )
+
+        gt = ds.GetGeoTransform()
+
+        cols = ds.RasterXSize
+        rows = ds.RasterYSize
+
+        longitude = gt[0] + np.arange(cols) * gt[1]
+        latitude = gt[3] + np.arange(rows) * gt[5]
+
+        geo_data = ds.GetRasterBand(1).ReadAsArray()
+
+        ds = None
+
+        return (
+            geo_data,
+            latitude,
+            longitude,
+        )

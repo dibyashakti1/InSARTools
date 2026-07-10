@@ -28,6 +28,7 @@ from . import plotting
 from . import sensors
 from . import unwrapped
 from . import wrapped
+from . import coherence
 
 __all__ = [
     "__version__",
@@ -42,4 +43,5 @@ __all__ = [
     "sensors",
     "unwrapped",
     "wrapped",
+    "coherence",
 ]

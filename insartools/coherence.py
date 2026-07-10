@@ -1,16 +1,29 @@
 """
-insartools.unwrapped
-====================
+===============================================================================
 
-Visualization utilities for unwrapped InSAR interferograms.
+InSARTools
+Coherence Visualization
 
-This module provides publication-quality visualization of
-unwrapped phase interferograms in both radar and geographic
-coordinates.
+===============================================================================
 
 Author
 ------
-InSARTools Development Team
+Dibyashakti Panda
+
+Description
+-----------
+Visualization utilities for interferometric coherence rasters.
+
+Features
+--------
+- Radar-coordinate plotting
+- Geographic plotting using GDAL geocoding
+- MATLAB export
+- GeoTIFF export
+- PNG/PDF/SVG export
+- JSON metadata export
+
+===============================================================================
 """
 
 from __future__ import annotations
@@ -23,7 +36,7 @@ import numpy as np
 from .io import read_raster
 
 from ._raster import _plot_raster
-from ._styles import UNWRAPPED_STYLE
+from ._styles import COHERENCE_STYLE
 
 logger = logging.getLogger(__name__)
 
@@ -35,79 +48,67 @@ __all__ = [
 # Defaults
 ###############################################################################
 
-#DEFAULT_TITLE = "Unwrapped Interferogram"
+#DEFAULT_CMAP = "viridis"
 
-#DEFAULT_CMAP = "RdBu_r"
+#DEFAULT_TITLE = "Interferometric Coherence"
 
-#DEFAULT_COLORBAR = "Unwrapped Phase (radians)"
+#DEFAULT_COLORBAR = "Coherence"
 
 DEFAULT_EXPORT = (
     "png",
+    "pdf",
     "svg",
     "mat",
-    "pdf",
-    "tif",
+    "json",
 )
 
 ###############################################################################
-# Internal helpers
+# Internal helper
 ###############################################################################
 
-def _prepare_unwrapped(
+
+def _prepare_coherence(
+    *,
     input_file: str | Path,
     processor: str = "auto",
 ) -> np.ndarray:
     """
-    Read an unwrapped interferogram.
+    Read coherence raster.
 
     Parameters
     ----------
-    input_file : str or Path
-        Unwrapped interferogram.
+    input_file
+        Coherence raster.
 
-    processor : str, default="auto"
-        InSAR processor.
+    processor
+        Reserved for future processor-specific handling.
 
     Returns
     -------
     ndarray
-        Unwrapped phase in radians.
+        Coherence image.
     """
 
     logger.info(
-        "Reading unwrapped interferogram: %s",
-        input_file,
+        "Reading coherence raster."
     )
 
-    processor = processor.upper()
+    coherence = read_raster(
+        str(input_file)
+    )
 
-    if processor in ("AUTO", "ISCE2"):
-
-        # ISCE2/ROI_PAC convention:
-        # Band 1 -> amplitude
-        # Band 2 -> unwrapped phase
-        phase = read_raster(
-            str(input_file),
-            band=2,
-        )
-
-    else:
-        raise NotImplementedError(
-            f"Processor '{processor}' is not yet supported."
-        )
-
-    phase = phase.astype(
+    coherence = coherence.astype(
         np.float32,
         copy=False,
     )
 
-    logger.info(
-        "Raster size: %d × %d",
-        phase.shape[0],
-        phase.shape[1],
+    coherence = np.clip(
+        coherence,
+        0.0,
+        1.0,
     )
 
-    return phase
+    return coherence
 
 ###############################################################################
 # Public API
@@ -129,12 +130,12 @@ def plot(
     show: bool = False,
 ):
     """
-    Plot an unwrapped interferogram.
+    Plot an interferometric coherence raster.
 
     Parameters
     ----------
     input_file : str or Path
-        Unwrapped interferogram.
+        Coherence raster.
 
     geometry_dir : str or Path, optional
         Geometry directory used for geographic plotting.
@@ -178,16 +179,16 @@ def plot(
         Matplotlib AxesImage.
     """
 
-    logger.info("Unwrapped interferogram")
+    logger.info("Interferometric coherence")
 
-    phase = _prepare_unwrapped(
+    coherence = _prepare_coherence(
         input_file=input_file,
         processor=processor,
     )
 
     return _plot_raster(
-        data=phase,
-        style=UNWRAPPED_STYLE,
+        data=coherence,
+        style=COHERENCE_STYLE,
         geometry_dir=geometry_dir,
         output=output,
         processor=processor,
@@ -197,6 +198,11 @@ def plot(
         dpi=dpi,
         cmap=cmap,
         title=title,
-        variable_name="unwrapped_phase",
+        variable_name="coherence",
+        metadata={
+            "minimum": float(np.nanmin(coherence)),
+            "maximum": float(np.nanmax(coherence)),
+            "mean": float(np.nanmean(coherence)),
+        },
         show=show,
     )

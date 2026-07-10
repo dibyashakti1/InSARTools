@@ -56,3 +56,30 @@ temp/
 *.log
 .pytest_cache/
 __pycache__/
+
+
+# Generated figures
+*.png
+*.pdf
+*.svg
+
+# Exported rasters
+*.tif
+*.tiff
+*.kmz
+
+# MATLAB exports
+*.mat
+
+# JSON metadata
+*.json
+
+# Test outputs
+*_refactored*
+*_geo*
+*_radar*
+phase_geo.tif
+
+# Temporary files
+tmp/
+temp/
