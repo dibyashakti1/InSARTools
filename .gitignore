@@ -83,3 +83,20 @@ phase_geo.tif
 # Temporary files
 tmp/
 temp/
+
+# Generated exports
+*.mat
+*.tif
+*.tiff
+*.kmz
+*.json
+
+# Figures generated during testing
+*_geo.*
+*_radar.*
+*_refactored.*
+
+# If you want to ignore all generated figures:
+# *.png
+# *.pdf
+# *.svg
