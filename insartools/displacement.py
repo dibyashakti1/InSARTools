@@ -74,6 +74,7 @@ def _prepare_phase(
 
     phase = read_raster(
         str(input_file),
+        band=2,
     )
 
     return phase.astype(
