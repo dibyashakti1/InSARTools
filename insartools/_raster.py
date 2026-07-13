@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "RasterStyle",
     "_plot_raster",
+    "DISPLACEMENT_STYLE",
 ]
 
 ###############################################################################
@@ -332,6 +333,16 @@ def _plot_raster(
     if metadata is not None:
         info.update(metadata)
 
+
+    formats = list(export_formats)
+
+    if lat is None or lon is None:
+        if "tif" in formats:
+            logger.warning(
+                "Skipping GeoTIFF export for radar-coordinate raster."
+            )
+            formats.remove("tif")
+
     ###########################################################################
     # Export
     ###########################################################################
@@ -344,7 +355,7 @@ def _plot_raster(
             latitude=lat,
             longitude=lon,
             output=output,
-            formats=list(export_formats),
+            formats=formats,
             metadata=info,
             variable_name=variable_name,
         )

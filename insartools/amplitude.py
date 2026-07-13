@@ -1,30 +1,46 @@
 """
-insartools.amplitude
-====================
+===============================================================================
 
-Visualization utilities for SAR amplitude and intensity images.
+InSARTools
 
-This module provides publication-quality visualization of SAR amplitude
-images with optional preprocessing including logarithmic scaling,
-decibel conversion, gamma correction and percentile clipping.
+amplitude.py
+
+Visualization of SAR amplitude images.
+
+Supports
+
+- ISCE2
+- Amplitude rasters
+- Radar coordinates
+- Geographic coordinates
+- Publication-quality figures
 
 Author
 ------
-InSARTools Development Team
+Dibyashakti Panda
+
+License
+-------
+MIT
+
+===============================================================================
 """
 
 from __future__ import annotations
 
 import logging
-from pathlib import Path
-from typing import Any, Literal
 
-import matplotlib.pyplot as plt
+from dataclasses import replace
+
+from pathlib import Path
+
 import numpy as np
 
-from . import export
-from .plot import PlotConfig
-from .plot import imshow
+from .io import read_raster
+
+from ._raster import _plot_raster
+
+from ._styles import AMPLITUDE_STYLE
 
 logger = logging.getLogger(__name__)
 
@@ -32,177 +48,170 @@ __all__ = [
     "plot",
 ]
 
-DisplayMode = Literal[
-    "linear",
-    "log",
-    "db",
-]
-
-DEFAULT_CMAP = "gray"
-
-DEFAULT_COLORBAR = "Amplitude"
-
 
 ###############################################################################
-# Internal preprocessing
+# Defaults
 ###############################################################################
+
+DEFAULT_EXPORT = (
+    "png",
+    "svg",
+    "pdf",
+    "mat",
+    "tif",
+)
 
 
 def _prepare_amplitude(
-    amplitude: np.ndarray,
-    *,
-    mode: DisplayMode,
-    gamma: float,
-    clip_percentile: tuple[float, float] | None,
+    input_file: str | Path,
 ) -> np.ndarray:
     """
-    Prepare an amplitude image for visualization.
+    Read an amplitude image.
+
+    Complex rasters are converted to amplitude using their magnitude.
     """
 
-    image = np.asarray(
-        amplitude,
-        dtype=np.float32,
-    ).copy()
+    logger.info("Reading amplitude image.")
 
-    image[image < 0] = np.nan
+    amplitude = read_raster(
+        str(input_file),
+    )
 
-    if mode == "log":
-        image = np.log10(
-            image + 1e-6,
+    if np.iscomplexobj(amplitude):
+
+        logger.info(
+            "Complex raster detected. Computing amplitude."
         )
 
-    elif mode == "db":
-        image = 20.0 * np.log10(
-            image + 1e-6,
-        )
+        amplitude = np.abs(amplitude)
 
-    if gamma != 1.0:
-        image = np.power(
-            image - np.nanmin(image),
-            gamma,
-        )
-
-    if clip_percentile is not None:
-
-        low, high = np.nanpercentile(
-            image,
-            clip_percentile,
-        )
-
-        image = np.clip(
-            image,
-            low,
-            high,
-        )
-
-    return image
+    return amplitude.astype(
+        np.float32,
+    )
 
 def plot(
-    amplitude: np.ndarray,
+    input_file: str | Path,
     *,
-    latitude: np.ndarray | None = None,
-    longitude: np.ndarray | None = None,
-    mode: DisplayMode = "db",
-    gamma: float = 1.0,
-    clip_percentile: tuple[float, float] | None = (2, 98),
-    title: str = "SAR Amplitude",
-    figsize: tuple[float, float] = (8.0, 8.0),
-    dpi: int = 300,
-    cmap: str = DEFAULT_CMAP,
+    geometry_dir: str | Path | None = None,
     output: str | Path | None = None,
-    save: list[str] | None = None,
-    metadata: dict[str, Any] | None = None,
-    show: bool = True,
+    processor: str = "auto",
+    view: str = "radar",
+    export_formats: tuple[str, ...] = DEFAULT_EXPORT,
+    figsize: tuple[float, float] = (6.5, 5.5),
+    dpi: int = 300,
+    cmap: str | None = None,
+    title: str | None = None,
+    show: bool = False,
 ):
     """
-    Plot a SAR amplitude image.
+    Plot an amplitude image.
 
     Parameters
     ----------
-    amplitude : ndarray
-        SAR amplitude image.
+    input_file
+        Input raster (complex interferogram, SLC or amplitude image).
 
-    mode : {"linear","log","db"}
-        Display mode.
+    geometry_dir
+        Geometry directory for geographic plotting.
 
-    gamma : float
-        Gamma correction.
+    output
+        Output filename without extension.
 
-    clip_percentile : tuple, optional
-        Percentile stretch.
+    processor
+        InSAR processor.
+
+    view
+        "radar" or "geo".
+
+    export_formats
+        Export formats.
+
+    figsize
+        Figure size.
+
+    dpi
+        Figure resolution.
+
+    cmap
+        Optional colormap override.
+
+    title
+        Optional title override.
+
+    show
+        Display figure.
 
     Returns
     -------
     fig
     ax
     image
-    files
     """
 
-    logger.info(
-        "Preparing amplitude image."
+    logger.info("Preparing amplitude image.")
+
+    amplitude = _prepare_amplitude(
+        input_file,
     )
 
-    image_data = _prepare_amplitude(
-        amplitude,
-        mode=mode,
-        gamma=gamma,
-        clip_percentile=clip_percentile,
+    
+###############################################################################
+# Display scaling
+###############################################################################
+
+    display = 20.0 * np.log10(
+        np.maximum(amplitude, 1.0)
     )
 
-    if mode == "db":
-        colorbar = "Amplitude (dB)"
-    elif mode == "log":
-        colorbar = "Log Amplitude"
-    else:
-        colorbar = DEFAULT_COLORBAR
+    vmin = float(
+        np.nanpercentile(display, 2)
+    )
 
-    config = PlotConfig(
-        cmap=cmap,
+    vmax = float(
+        np.nanpercentile(display, 98)
+    )
+
+    style = replace(
+        AMPLITUDE_STYLE,
+        colorbar_label="Amplitude (dB)",
+        vmin=vmin,
+        vmax=vmax,
+    )
+
+###############################################################################
+# Display image
+###############################################################################
+
+    display = 20.0 * np.log10(
+        np.maximum(amplitude, 1.0)
+    )
+    style = replace(
+        AMPLITUDE_STYLE,
+        colorbar_label="Amplitude (dB)",
+        vmin=vmin,
+        vmax=vmax,
+    )
+    vmin = float(np.nanpercentile(display, 2))
+    vmax = float(np.nanpercentile(display, 98))
+
+
+    return _plot_raster(
+        data=display,
+        style=style,
+        geometry_dir=geometry_dir,
+        output=output,
+        processor=processor,
+        view=view,
+        export_formats=export_formats,
         figsize=figsize,
         dpi=dpi,
+        cmap=cmap,
         title=title,
-        colorbar_label=colorbar,
+        variable_name="amplitude",
+        metadata={
+            "minimum": float(np.nanmin(amplitude)),
+            "maximum": float(np.nanmax(amplitude)),
+            "mean": float(np.nanmean(amplitude)),
+        },
+        show=show,
     )
-
-    fig, ax, image = imshow(
-        image_data,
-        latitude=latitude,
-        longitude=longitude,
-        config=config,
-    )
-
-    files = {}
-
-    if save is None:
-        save = []
-
-    if output is not None:
-
-        metadata_out = {
-            "product": "amplitude",
-            "display_mode": mode,
-            "gamma": gamma,
-            "rows": int(amplitude.shape[0]),
-            "cols": int(amplitude.shape[1]),
-            "dtype": str(amplitude.dtype),
-        }
-
-        if metadata is not None:
-            metadata_out.update(metadata)
-
-        files = export.save(
-            figure=fig,
-            data=image_data,
-            latitude=latitude,
-            longitude=longitude,
-            output=output,
-            formats=save,
-            metadata=metadata_out,
-            variable_name="amplitude",
-        )
-
-    if show:
-        plt.show()
-
-    return fig, ax, image, files

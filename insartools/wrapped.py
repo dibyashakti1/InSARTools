@@ -190,8 +190,20 @@ def _prepare_phase(
 
     phase = _to_wrapped_phase(data)
 
-    if flip == "auto":
+    phase = _to_wrapped_phase(data)
 
+###############################################################################
+# Orientation correction
+###############################################################################
+
+# Reverse the range direction so the wrapped interferogram has the same
+# orientation convention as the unwrapped interferogram.
+    phase = np.fliplr(phase)
+###############################################################################
+# Processor-specific orientation
+###############################################################################
+
+    if flip == "auto":
         # Current convention:
         # ISCE2 radar products are displayed upside-down
         # relative to geographic north.
@@ -206,6 +218,14 @@ def _prepare_phase(
         phase,
         flip_required,
     )
+
+###############################################################################
+# Final orientation correction
+###############################################################################
+
+# Ensure wrapped interferograms use the same display orientation as
+# unwrapped interferograms.
+    phase = np.flipud(np.fliplr(phase))
 
     return phase
 

@@ -29,6 +29,7 @@ from . import sensors
 from . import unwrapped
 from . import wrapped
 from . import coherence
+from . import displacement
 
 __all__ = [
     "__version__",
@@ -44,4 +45,5 @@ __all__ = [
     "unwrapped",
     "wrapped",
     "coherence",
+    "displacement",
 ]

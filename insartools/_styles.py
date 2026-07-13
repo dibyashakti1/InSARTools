@@ -56,7 +56,7 @@ COHERENCE_STYLE = RasterStyle(
 ###############################################################################
 
 AMPLITUDE_STYLE = RasterStyle(
-    title="SAR Amplitude",
+    title="Amplitude",
     cmap="gray",
     colorbar_label="Amplitude",
     variable_name="amplitude",
@@ -66,11 +66,11 @@ AMPLITUDE_STYLE = RasterStyle(
 # LOS Displacement
 ###############################################################################
 
-LOS_STYLE = RasterStyle(
-    title="Line-of-Sight Displacement",
+DISPLACEMENT_STYLE = RasterStyle(
+    title="LOS Displacement",
     cmap="RdYlBu",
     colorbar_label="LOS Displacement (m)",
-    variable_name="los_displacement",
+    variable_name="displacement",
 )
 
 ###############################################################################
