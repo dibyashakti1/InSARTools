@@ -30,6 +30,7 @@ from . import unwrapped
 from . import wrapped
 from . import coherence
 from . import displacement
+from . import info
 
 __all__ = [
     "__version__",
@@ -46,4 +47,5 @@ __all__ = [
     "wrapped",
     "coherence",
     "displacement",
+    "info",
 ]

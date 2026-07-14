@@ -40,6 +40,10 @@ from ._raster import _plot_raster
 
 from ._styles import DISPLACEMENT_STYLE
 
+from .sensors import get_wavelength
+
+from .sensors import get_sensor
+
 logger = logging.getLogger(__name__)
 
 __all__ = [
@@ -57,8 +61,6 @@ DEFAULT_EXPORT = (
     "mat",
     "tif",
 )
-
-DEFAULT_WAVELENGTH = 0.05546576
 
 
 def _prepare_phase(
@@ -108,7 +110,8 @@ def _phase_to_displacement(
 def plot(
     input_file: str | Path,
     *,
-    wavelength: float = DEFAULT_WAVELENGTH,
+    sensor: str | None = "S1",
+    wavelength: float | None = None,
     geometry_dir: str | Path | None = None,
     output: str | Path | None = None,
     processor: str = "auto",
@@ -130,11 +133,25 @@ def plot(
     phase = _prepare_phase(
         input_file,
     )
+    if wavelength is None:
 
-    displacement = _phase_to_displacement(
-        phase,
-        wavelength=wavelength,
-    )
+        wavelength = get_sensor(
+            sensor,
+        ).wavelength
+
+        logger.info(
+            "Sensor: %s",
+            sensor,
+        )
+
+        logger.info(
+            "Radar wavelength: %.6f m",
+            wavelength,
+        )
+        displacement = _phase_to_displacement(
+            phase,
+            wavelength=wavelength,
+        )
 
     return _plot_raster(
         data=displacement,

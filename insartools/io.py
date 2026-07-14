@@ -84,6 +84,51 @@ def raster_info(filename: str) -> dict:
     return info
 
 
+def raster_dtype(filename: str) -> str:
+
+    """
+
+    Return raster data type.
+
+    Parameters
+
+    ----------
+
+    filename : str
+
+        Input raster.
+
+    Returns
+
+    -------
+
+    str
+
+        GDAL data type name.
+
+    """
+
+    ds = gdal.Open(filename)
+
+    if ds is None:
+
+        raise InvalidRasterError(
+
+            f"Cannot open raster: {filename}"
+
+        )
+
+    dtype = gdal.GetDataTypeName(
+
+        ds.GetRasterBand(1).DataType
+
+    )
+
+    ds = None
+
+    return dtype
+
+
 def write_envi(
     filename: str,
     array: np.ndarray,

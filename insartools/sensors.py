@@ -62,6 +62,21 @@ SENSORS: Dict[str, Sensor] = {
         wavelength=0.238403545,
         frequency=1.2575e9,
     ),
+
+    "NISAR-L": Sensor(
+        short_name="NISAR-L",
+        full_name="NISAR L-band",
+        wavelength=0.238,
+        frequency=1.257e9,
+
+    ),
+
+    "NISAR-S": Sensor(
+        short_name="NISAR-S",
+        full_name="NISAR S-band",
+        wavelength=0.094,
+        frequency=3.20e9,
+    ),
 }
 
 
@@ -90,3 +105,10 @@ def get_sensor(sensor: str) -> Sensor:
         raise ValueError(f"Unsupported sensor: {sensor}")
 
     return SENSORS[sensor]
+
+def get_wavelength(sensor: str) -> float:
+    """
+    Return radar wavelength in metres.
+    """
+
+    return get_sensor(sensor).wavelength
