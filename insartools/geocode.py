@@ -630,6 +630,9 @@ def geocode_gdal(
         dstSRS=target_epsg,
         geoloc=True,
         resampleAlg=resampling,
+        
+        dstNodata=np.nan,
+
         creationOptions=[
             "COMPRESS=LZW",
             "TILED=YES",
@@ -899,9 +902,18 @@ def geocode_for_plot(
         longitude = gt[0] + np.arange(cols) * gt[1]
         latitude = gt[3] + np.arange(rows) * gt[5]
 
-        geo_data = ds.GetRasterBand(1).ReadAsArray()
+        band = ds.GetRasterBand(1)
+        
+        nodata = band.GetNoDataValue()
+        
+        print("NoData =", nodata)
+        geo_data = band.ReadAsArray().astype(np.float32)
+
+        if nodata is not None:
+            geo_data[geo_data == nodata] = np.nan
 
         ds = None
+
 
         return (
             geo_data,

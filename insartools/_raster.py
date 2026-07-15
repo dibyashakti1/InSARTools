@@ -346,7 +346,7 @@ def _plot_raster(
     ###########################################################################
     # Export
     ###########################################################################
-
+    
     if output is not None:
         logger.info("Exporting raster.")
         export.save(
@@ -358,6 +358,9 @@ def _plot_raster(
             formats=formats,
             metadata=info,
             variable_name=variable_name,
+            cmap=config.cmap,
+            vmin=config.vmin,
+            vmax=config.vmax,
         )
 
     ###########################################################################

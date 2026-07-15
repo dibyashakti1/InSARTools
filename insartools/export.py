@@ -573,6 +573,103 @@ def save_kmz(
     return kmz_file
 
 ###############################################################################
+# Google Earth overlay image
+###############################################################################
+
+def save_overlay_png(
+
+    data: np.ndarray,
+
+    filename: str | Path,
+
+    *,
+
+    cmap="viridis",
+
+    vmin=None,
+
+    vmax=None,
+
+):
+
+    """
+
+    Save a borderless raster image for Google Earth overlays.
+
+    """
+
+    import matplotlib.pyplot as plt
+
+    filename = Path(filename)
+
+    _ensure_parent_directory(filename)
+
+    plt.imsave(
+
+        filename,
+
+        data,
+
+        cmap=cmap,
+
+        vmin=vmin,
+
+        vmax=vmax,
+
+    )
+
+    logger.info(
+
+        "Overlay PNG written to %s",
+
+        filename,
+
+    )
+
+    return filename
+
+
+###############################################################################
+# Google Earth overlay PNG
+###############################################################################
+
+def save_overlay_png(
+    data: np.ndarray,
+    filename: str | Path,
+    *,
+    cmap: str = "viridis",
+    vmin: float | None = None,
+    vmax: float | None = None,
+) -> Path:
+    """
+    Save a borderless PNG for Google Earth overlays.
+    """
+
+    import matplotlib.pyplot as plt
+
+    filename = Path(filename)
+
+    _ensure_parent_directory(filename)
+
+    masked = np.ma.masked_invalid(data)
+
+    plt.imsave(
+        filename,
+        masked,
+        cmap=cmap,
+        vmin=vmin,
+        vmax=vmax,
+    )
+
+    logger.info(
+        "Overlay PNG written to %s",
+        filename,
+    )
+
+    return filename
+
+
+###############################################################################
 # Unified export dispatcher
 ###############################################################################
 
@@ -587,6 +684,9 @@ def save(
     formats: list[str],
     metadata: dict[str, Any] | None = None,
     variable_name: str = "data",
+    cmap: str = "viridis",
+    vmin: float | None = None,
+    vmax: float | None = None,
 ) -> dict[str, Path]:
     """
     Export data and/or figures to one or more formats.
@@ -630,13 +730,35 @@ def save(
             "cols": int(data.shape[1]),
             "dtype": str(data.dtype),
         }
-
+    png = None
+    overlay_png = None
     if figure is not None:
 
+        # Publication PNG
         if "png" in formats:
-            files["png"] = save_figure(
+            png = save_figure(
                 figure,
                 output.with_suffix(".png"),
+            )
+            files["png"] = png
+
+        # Google Earth overlay PNG (no axes, no labels)
+        if (
+            data is not None
+            and (
+                "kml" in formats
+                or "kmz" in formats
+            )
+        ):
+
+            overlay_png = save_overlay_png(
+                data,
+                output.with_name(
+                    output.name + "_overlay"
+                ).with_suffix(".png"),
+                cmap=cmap,
+                vmin=vmin,
+                vmax=vmax,
             )
 
         if "pdf" in formats:
@@ -678,13 +800,14 @@ def save(
                 raise ValueError(
                     "GeoTIFF export requires latitude and longitude."
                 )
-
+            print(">>> Writing GeoTIFF...")
             files["tif"] = save_geotiff(
                 data,
                 output.with_suffix(".tif"),
                 latitude=latitude,
                 longitude=longitude,
             )
+            print(">>> GeoTIFF finished.")
 
     if metadata is not None and "json" in formats:
         files["json"] = save_json(
@@ -721,7 +844,7 @@ def save(
 
         if "kml" in formats:
             files["kml"] = save_kml(
-                image_file=png,
+                image_file=overlay_png,
                 filename=output.with_suffix(".kml"),
                 west=west,
                 east=east,
@@ -731,7 +854,7 @@ def save(
 
         if "kmz" in formats:
             files["kmz"] = save_kmz(
-                image_file=png,
+                image_file=overlay_png,
                 kmz_file=output.with_suffix(".kmz"),
                 west=west,
                 east=east,

@@ -60,6 +60,7 @@ DEFAULT_EXPORT = (
     "pdf",
     "mat",
     "tif",
+    "kml",
 )
 
 
