@@ -430,6 +430,160 @@ def save_geotiff(
     return filename
 
 ###############################################################################
+# Latitude and longitude GeoTIFF export
+###############################################################################
+
+
+def save_coordinate_geotiffs(
+    latitude: np.ndarray,
+    longitude: np.ndarray,
+    output: str | Path,
+    *,
+    transform,
+    crs: str = "EPSG:4326",
+) -> dict[str, Path]:
+    """
+    Save latitude and longitude coordinate grids as GeoTIFF files.
+
+    The coordinate rasters use the same dimensions and grid transform
+    convention as the corresponding data GeoTIFF.
+
+    Parameters
+    ----------
+    latitude : ndarray
+        One-dimensional latitude vector.
+
+    longitude : ndarray
+        One-dimensional longitude vector.
+
+    output : str or Path
+        Output filename prefix without extension.
+
+    Returns
+    -------
+    dict[str, Path]
+        Paths to the latitude and longitude GeoTIFF files.
+    """
+
+    if rasterio is None:
+        raise ImportError(
+            "Rasterio is required for coordinate GeoTIFF export."
+        )
+
+    latitude = np.asarray(latitude, dtype=np.float64).squeeze()
+    longitude = np.asarray(longitude, dtype=np.float64).squeeze()
+
+    if latitude.ndim != 1 or longitude.ndim != 1:
+        raise ValueError(
+            "Latitude and longitude must be one-dimensional vectors."
+        )
+
+    if latitude.size < 2 or longitude.size < 2:
+        raise ValueError(
+            "Latitude and longitude vectors must contain "
+            "at least two values."
+        )
+
+    if not np.all(np.isfinite(latitude)):
+        raise ValueError("Latitude contains non-finite values.")
+
+    if not np.all(np.isfinite(longitude)):
+        raise ValueError("Longitude contains non-finite values.")
+
+    if np.any(np.abs(latitude) > 90):
+        raise ValueError("Latitude values must be between -90 and 90.")
+
+    if np.any(np.abs(longitude) > 180):
+        raise ValueError("Longitude values must be between -180 and 180.")
+
+    dlat = np.diff(latitude)
+    dlon = np.diff(longitude)
+
+    if not (
+        np.all(dlat > 0) or np.all(dlat < 0)
+    ):
+        raise ValueError("Latitude must be strictly monotonic.")
+
+    if not np.all(dlon > 0):
+        raise ValueError(
+            "Longitude must increase from left to right "
+            "for GeoTIFF export."
+        )
+
+    if not np.allclose(dlat, dlat[0], rtol=1e-5, atol=1e-10):
+        raise ValueError("Latitude coordinates are not regularly spaced.")
+
+    if not np.allclose(dlon, dlon[0], rtol=1e-5, atol=1e-10):
+        raise ValueError("Longitude coordinates are not regularly spaced.")
+
+    output = Path(output).with_suffix("")
+    _ensure_parent_directory(output)
+
+    output = Path(output).with_suffix("")
+    _ensure_parent_directory(output)
+
+    # Generate pixel-center coordinates from the exact affine transform
+    # of the corresponding data GeoTIFF.
+    height = latitude.size
+    width = longitude.size
+
+    col_grid, row_grid = np.meshgrid(
+        np.arange(width, dtype=np.float64) + 0.5,
+        np.arange(height, dtype=np.float64) + 0.5,
+    )
+
+    lon_grid = (
+        transform.a * col_grid
+        + transform.b * row_grid
+        + transform.c
+    )
+
+    lat_grid = (
+        transform.d * col_grid
+        + transform.e * row_grid
+        + transform.f
+    )
+
+    coordinate_grids = {
+        "latitude": lat_grid.astype(np.float32),
+        "longitude": lon_grid.astype(np.float32),
+    }
+
+    files: dict[str, Path] = {}
+
+    for name, grid in coordinate_grids.items():
+
+        filename = output.with_name(
+            f"{output.name}_{name}"
+        ).with_suffix(".tif")
+
+        with rasterio.open(
+            filename,
+            "w",
+            driver="GTiff",
+            width=width,
+            height=height,
+            count=1,
+            dtype="float32",
+            crs=crs,
+            transform=transform,
+            nodata=np.nan,
+            compress="lzw",
+        ) as dst:
+
+            dst.write(grid, 1)
+
+        files[name] = filename
+
+        logger.info(
+            "Saved %s coordinate GeoTIFF: %s",
+            name,
+            filename,
+        )
+
+    return files
+
+###############################################################################
 # Metadata export
 ###############################################################################
 
@@ -800,14 +954,57 @@ def save(
                 raise ValueError(
                     "GeoTIFF export requires latitude and longitude."
                 )
+
             print(">>> Writing GeoTIFF...")
-            files["tif"] = save_geotiff(
+
+            data_tif = save_geotiff(
                 data,
                 output.with_suffix(".tif"),
                 latitude=latitude,
                 longitude=longitude,
             )
+
+            files["tif"] = data_tif
+
             print(">>> GeoTIFF finished.")
+
+            coordinate_products = {
+                "coherence",
+                "wrapped_phase",
+                "unwrapped_phase",
+            }
+
+            if variable_name in coordinate_products:
+
+                if rasterio is None:
+                    raise ImportError(
+                        "Rasterio is required for coordinate GeoTIFF export."
+                    )
+
+                with rasterio.open(data_tif) as src:
+                    data_transform = src.transform
+                    data_crs = src.crs
+
+                print(">>> Writing latitude and longitude GeoTIFFs...")
+
+                coordinate_files = save_coordinate_geotiffs(
+                    latitude=latitude,
+                    longitude=longitude,
+                    output=output,
+                    transform=data_transform,
+                    crs=str(data_crs),
+                )
+
+                files.update(
+                    {
+                        f"{name}_tif": path
+                        for name, path in coordinate_files.items()
+                    }
+                )
+
+                print(">>> Coordinate GeoTIFFs finished.")
+
+
 
     if metadata is not None and "json" in formats:
         files["json"] = save_json(
