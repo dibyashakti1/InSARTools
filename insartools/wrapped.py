@@ -311,6 +311,7 @@ def plot(
     )
 
     return _plot_raster(
+        input_file=input_file,
         data=phase,
         style=WRAPPED_STYLE,
         geometry_dir=geometry_dir,

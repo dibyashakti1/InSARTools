@@ -196,6 +196,7 @@ def plot(
 
 
     return _plot_raster(
+        input_file=input_file,
         data=display,
         style=style,
         geometry_dir=geometry_dir,

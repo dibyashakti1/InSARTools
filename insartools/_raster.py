@@ -23,6 +23,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import rasterio
 
 from . import export
 from . import geocode
@@ -65,9 +66,91 @@ class RasterStyle:
 # Geographic preparation
 ###############################################################################
 
+def _geographic_coordinates(
+    *,
+    input_file: str | Path,
+    data: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """
+    Read geographic coordinate vectors from an already-geocoded raster.
+
+    The input may be a GeoTIFF or an ISCE binary raster accompanied by
+    a GDAL VRT, such as ``product.geo`` and ``product.geo.vrt``.
+
+    Returns
+    -------
+    tuple of ndarray or None
+        Latitude and longitude vectors, or None when the source is not
+        a suitable north-up geographic raster.
+    """
+
+    source = Path(input_file)
+
+    candidates = []
+    if source.suffix.lower() == ".vrt":
+        candidates.append(source)
+    else:
+        candidates.extend([
+            Path(str(source) + ".vrt"),
+            source,
+        ])
+
+    for candidate in candidates:
+        if not candidate.is_file():
+            continue
+
+        try:
+            with rasterio.open(candidate) as ds:
+                if ds.crs is None or not ds.crs.is_geographic:
+                    continue
+
+                transform = ds.transform
+
+                # The plotting interface uses 1-D coordinate vectors.
+                # Reject rotated/sheared rasters rather than misplot them.
+                if abs(transform.b) > 1e-12 or abs(transform.d) > 1e-12:
+                    logger.debug(
+                        "Skipping rotated geographic raster: %s",
+                        candidate,
+                    )
+                    continue
+
+                if (ds.height, ds.width) != data.shape[:2]:
+                    logger.debug(
+                        "Raster dimensions do not match input data: %s",
+                        candidate,
+                    )
+                    continue
+
+                longitude = (
+                    transform.c
+                    + (np.arange(ds.width) + 0.5) * transform.a
+                )
+                latitude = (
+                    transform.f
+                    + (np.arange(ds.height) + 0.5) * transform.e
+                )
+
+                logger.info(
+                    "Using geographic coordinates from %s",
+                    candidate,
+                )
+                return latitude, longitude
+
+        except (rasterio.errors.RasterioError, OSError) as exc:
+            logger.debug(
+                "Could not read georeferencing from %s: %s",
+                candidate,
+                exc,
+            )
+
+    return None
+
+
 def _prepare_geographic_view(
     *,
     data: np.ndarray,
+    input_file: str | Path | None,
     view: str,
     geometry_dir: str | Path | None,
     title: str,
@@ -134,14 +217,27 @@ def _prepare_geographic_view(
     # Geographic coordinates
     ###########################################################################
 
-    if geometry_dir is None:
-        raise ValueError(
-            "geometry_dir is required when view='geo'."
+    # First handle inputs that are already geocoded, including ISCE
+    # rasters accompanied by a GDAL VRT.
+    if input_file is not None:
+        coordinates = _geographic_coordinates(
+            input_file=input_file,
+            data=data,
         )
 
-    logger.info(
-        "Preparing geographic raster."
-    )
+        if coordinates is not None:
+            latitude, longitude = coordinates
+            title = f"{title} (Geocoded)"
+            return data, latitude, longitude, title
+
+    # Otherwise retain the existing radar-coordinate geocoding route.
+    if geometry_dir is None:
+        raise ValueError(
+            "Could not obtain geographic coordinates from the input raster. "
+            "For radar-coordinate data, provide geometry_dir."
+        )
+
+    logger.info("Preparing geographic raster using geometry directory.")
 
     data, latitude, longitude = geocode.geocode_for_plot(
         data=data,
@@ -214,6 +310,7 @@ def _plot_raster(
     *,
     data: np.ndarray,
     style: RasterStyle,
+    input_file: str | Path | None = None,
     geometry_dir: str | Path | None = None,
     output: str | Path | None = None,
     processor: str = "auto",
@@ -290,6 +387,7 @@ def _plot_raster(
 
     data, lat, lon, plot_title = _prepare_geographic_view(
         data=data,
+        input_file=input_file,
         view=view,
         geometry_dir=geometry_dir,
         title=plot_title,

@@ -187,6 +187,7 @@ def plot(
     )
 
     return _plot_raster(
+        input_file=input_file,
         data=phase,
         style=UNWRAPPED_STYLE,
         geometry_dir=geometry_dir,

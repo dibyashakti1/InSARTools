@@ -189,6 +189,7 @@ def plot(
     )
 
     return _plot_raster(
+        input_file=input_file,
         data=coherence,
         style=COHERENCE_STYLE,
         geometry_dir=geometry_dir,
