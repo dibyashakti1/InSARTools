@@ -69,48 +69,121 @@ DEFAULT_EXPORT = (
 ###############################################################################
 
 
+
 def _prepare_coherence(
     *,
     input_file: str | Path,
     processor: str = "auto",
 ) -> np.ndarray:
     """
-    Read coherence raster.
+    Read and validate an interferometric coherence raster.
+
+    Supports single-band coherence rasters and multi-band rasters
+    where normalized coherence is stored in band 2.
+
+    Band 1 is preferred when it contains valid normalized coherence.
+    Otherwise, band 2 is checked.
 
     Parameters
     ----------
     input_file
-        Coherence raster.
+        Path to the coherence raster.
 
     processor
         Reserved for future processor-specific handling.
 
     Returns
     -------
-    ndarray
-        Coherence image.
+    numpy.ndarray
+        Float32 coherence array with values in [0, 1].
+
+    Raises
+    ------
+    ValueError
+        If no suitable normalized coherence band is found.
     """
 
-    logger.info(
-        "Reading coherence raster."
-    )
+    from osgeo import gdal
 
-    coherence = read_raster(
-        str(input_file)
-    )
+    logger.info("Reading coherence raster: %s", input_file)
 
-    coherence = coherence.astype(
-        np.float32,
-        copy=False,
-    )
+    dataset = gdal.Open(str(input_file), gdal.GA_ReadOnly)
 
-    coherence = np.clip(
-        coherence,
-        0.0,
-        1.0,
-    )
+    if dataset is None:
+        raise ValueError(
+            f"Cannot open coherence raster: {input_file}"
+        )
 
-    return coherence
+    try:
+        band_count = dataset.RasterCount
+
+        if band_count < 1:
+            raise ValueError(
+                f"Raster contains no bands: {input_file}"
+            )
+
+        def is_normalized_coherence(data: np.ndarray) -> bool:
+            """Check whether finite, valid pixels lie in [0, 1]."""
+            valid = np.isfinite(data)
+
+            if not np.any(valid):
+                return False
+
+            values = data[valid]
+
+            return (
+                float(np.min(values)) >= 0.0
+                and float(np.max(values)) <= 1.0
+            )
+
+        selected_band = None
+        coherence = None
+
+        # Prefer band 1 when it contains normalized coherence.
+        for band_number in (1, 2):
+            if band_number > band_count:
+                continue
+
+            data = dataset.GetRasterBand(
+                band_number
+            ).ReadAsArray()
+
+            if data is None:
+                continue
+
+            data = data.astype(np.float32, copy=False)
+
+            if is_normalized_coherence(data):
+                selected_band = band_number
+                coherence = data
+                break
+
+        if coherence is None:
+            raise ValueError(
+                "Could not identify a normalized coherence band "
+                f"in {input_file}. Checked bands 1 and 2; "
+                "expected finite values within [0, 1]."
+            )
+
+        logger.info(
+            "Using coherence band %d from %s",
+            selected_band,
+            input_file,
+        )
+
+        # Preserve NaN and Inf as invalid pixels.
+        coherence = np.where(
+            np.isfinite(coherence),
+            coherence,
+            np.nan,
+        ).astype(np.float32, copy=False)
+
+        return coherence
+
+    finally:
+        dataset = None
+
+
 
 ###############################################################################
 # Public API

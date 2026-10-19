@@ -899,8 +899,8 @@ def geocode_for_plot(
         cols = ds.RasterXSize
         rows = ds.RasterYSize
 
-        longitude = gt[0] + np.arange(cols) * gt[1]
-        latitude = gt[3] + np.arange(rows) * gt[5]
+        longitude = gt[0] + (np.arange(cols)+0.5) * gt[1]
+        latitude = gt[3] + (np.arange(rows)+0.5) * gt[5]
 
         band = ds.GetRasterBand(1)
         
@@ -913,7 +913,6 @@ def geocode_for_plot(
             geo_data[geo_data == nodata] = np.nan
 
         ds = None
-
 
         return (
             geo_data,

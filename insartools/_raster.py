@@ -106,6 +106,21 @@ def _geographic_coordinates(
 
                 transform = ds.transform
 
+# Reject identity/pixel-coordinate transforms even if a CRS is set.
+                if (
+                    abs(transform.a - 1.0) < 1e-12
+                    and abs(transform.e - 1.0) < 1e-12
+                    and abs(transform.b) < 1e-12
+                    and abs(transform.d) < 1e-12
+                    and abs(transform.c) < 1e-12
+                    and abs(transform.f) < 1e-12
+                ):
+                    logger.debug(
+                        "Skipping identity transform falsely labelled geographic: %s",
+                        candidate,
+                    )
+                    continue
+
                 # The plotting interface uses 1-D coordinate vectors.
                 # Reject rotated/sheared rasters rather than misplot them.
                 if abs(transform.b) > 1e-12 or abs(transform.d) > 1e-12:
@@ -136,6 +151,18 @@ def _geographic_coordinates(
                     candidate,
                 )
                 return latitude, longitude
+
+                # Reject pixel-coordinate transforms incorrectly labelled
+                # as geographic coordinates (e.g. an identity transform).
+                if (
+                    np.any(np.abs(latitude) > 90)
+                    or np.any(np.abs(longitude) > 180)
+                ):
+                    logger.debug(
+                        "Skipping invalid geographic coordinate ranges: %s",
+                        candidate,
+                    )
+                    continue
 
         except (rasterio.errors.RasterioError, OSError) as exc:
             logger.debug(
@@ -447,6 +474,7 @@ def _plot_raster(
     
     if output is not None:
         logger.info("Exporting raster.")
+
         export.save(
             figure=fig,
             data=data,
